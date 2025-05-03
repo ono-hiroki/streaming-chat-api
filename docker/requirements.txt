@@ -1,0 +1,7 @@
+# requirements.txt
+fastapi
+uvicorn[standard]
+dependency-injector
+pytest
+httpx
+openai
