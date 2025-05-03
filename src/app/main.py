@@ -1,23 +1,27 @@
-# app/main.py
-from fastapi import FastAPI
-from app.containers import ApplicationContainer
-from app.routes.v1.root import router as message_router
+from fastapi import FastAPI, Request
+from fastapi.responses import StreamingResponse
+from openai import OpenAI
 
-def create_app() -> FastAPI:
-    container = ApplicationContainer()
+client = OpenAI()
+app = FastAPI()
 
-    container.wire(
-        modules=[
-            __name__,
-            "app.routes.v1.root",
-        ]
+def openai_stream_generator(messages: list[dict[str, str]]):
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        stream=True,
+        messages=messages,
     )
+    for chunk in response:
+        delta = chunk.choices[0].delta
+        if hasattr(delta, "content") and delta.content:
+            yield f"data: {delta.content}\n\n"
 
-    app = FastAPI()
-    app.container = container
+    yield "event: done\ndata: [DONE]\n\n"
 
-    app.include_router(message_router, prefix="/v1", tags=["Message"])
+@app.post("/v1/chat/stream", status_code=200)
+async def chat_stream(request: Request):
+    body = await request.json()
+    messages = body.get("messages", [])
 
-    return app
-
-app = create_app()
+    generator = openai_stream_generator(messages)
+    return StreamingResponse(generator, media_type="text/event-stream")
